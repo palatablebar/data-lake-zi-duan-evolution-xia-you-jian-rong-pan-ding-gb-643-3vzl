@@ -49,6 +49,16 @@ CODES: dict[str, tuple[str, str]] = {
     "VERSION_APPLIED": ("版本已登记", "info"),
     "RUN_REUSED": ("同一输入命中已算批次", "info"),
     "WINDOW_INVERTED": ("生效区间起点不早于终点", "break"),
+    # 恢复与回滚（M8）
+    "RECOVERY_POINT_FROZEN": ("恢复点已冻结", "info"),
+    "RECOVERY_BASIS_UNFROZEN": ("恢复依据未冻结，回滚不得放行", "break"),
+    "RECOVERY_POINT_NOT_FOUND": ("恢复点不存在", "break"),
+    "RECOVERY_NO_COMPLETE_POINT": ("消费方没有含自己的完整恢复点", "break"),
+    "RECOVERY_SHARED_MISMATCH": ("共享报表引用跨越两次发布", "break"),
+    "ROLLBACK_ALREADY_FINISHED": ("回滚单已结束，重复请求幂等返回", "info"),
+    "ROLLBACK_INTERRUPTED": ("回滚中断，可凭原单恢复", "warn"),
+    "ROLLBACK_RETRY_SAME_POINT": ("同一迁移重试沿用原恢复点，不新增恢复点", "info"),
+    "MIGRATION_IN_FLIGHT": ("迁移与回滚并发冲突", "break"),
     # 结论
     "COMPATIBLE": ("兼容", "info"),
     "COMPATIBLE_BY_MAPPING": ("加别名后兼容", "warn"),

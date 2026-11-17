@@ -31,6 +31,39 @@ const ACTIONS = {
     }
     return `比较完成 ${result.change}`;
   },
+
+  async 'register-points'() {
+    const result = await request('/api/recovery/points', {});
+    return `已登记 ${result.points.length} 个恢复点`;
+  },
+
+  async 'freeze-latest'() {
+    const points = await fetch('/api/recovery/points').then((r) => r.json());
+    const target = points.points[points.points.length - 1];
+    if (!target) return '没有可冻结的恢复点';
+    const result = await request(`/api/recovery/points/${target.point_id}/freeze`, {});
+    return `恢复点 ${result.point_id} 已冻结`;
+  },
+
+  async 'request-rollback'() {
+    return submitRollback(false);
+  },
+
+  async 'retry-rollback'() {
+    return submitRollback(false);
+  },
+
+  async 'resume-rollback'() {
+    return submitRollback(true);
+  },
+
+  async 'interrupt-rollback'() {
+    const orders = await fetch('/api/recovery/rollbacks').then((r) => r.json());
+    const target = orders.orders[0];
+    if (!target) return '还没有回滚单';
+    const result = await request(`/api/recovery/rollbacks/${target.order_id}/interrupt`, {});
+    return `回滚单 ${result.order_id} 已标记中断`;
+  },
 };
 
 async function request(url, body) {
@@ -48,11 +81,33 @@ async function request(url, body) {
   }
   if (!response.ok) {
     const message = (payload && (payload.message || payload.error)) || `HTTP ${response.status}`;
-    throw new Error(message);
+    const error = new Error(message);
+    error.payload = payload;
+    throw error;
   }
   return payload;
 }
 
+function splitList(id) {
+  const node = document.getElementById(id);
+  if (!node) return [];
+  return node.value.split(',').map((item) => item.trim()).filter(Boolean);
+}
+
+async function submitRollback(resume) {
+  const body = {
+    migration_id: (document.getElementById('rb-migration') || {}).value || 'wave-2026-09',
+    target_release_seq: Number((document.getElementById('rb-seq') || {}).value || 1),
+    consumers: splitList('rb-consumers'),
+    shared_reports: splitList('rb-reports'),
+    resume,
+  };
+  const result = await request('/api/recovery/rollbacks', body);
+  if (result.blockers && result.blockers.length) {
+    throw new Error(result.blockers.map((item) => item.code).join('、'));
+  }
+  return `回滚单 ${result.order_id} 状态 ${result.status}（第 ${result.attempts} 次）`;
+}
 function flash(target, message, bad) {
   if (!target) return;
   target.textContent = message;
@@ -69,15 +124,20 @@ document.addEventListener('click', async (event) => {
   const target = document.querySelector('[data-flash]');
   button.disabled = true;
   flash(target, '…', false);
+  let ok = false;
   try {
     const message = await handler(button);
     flash(target, message || '完成', false);
-    if (name === 'run') {
+    ok = true;
+    if (name === 'run' || name.startsWith('register-points') ||
+        name.includes('rollback') || name.startsWith('freeze')) {
       setTimeout(() => window.location.reload(), 400);
     }
   } catch (error) {
-    flash(target, error.message, true);
+    const blockers = error.payload && error.payload.detail && error.payload.detail.blockers;
+    flash(target, blockers ? blockers.map((item) => item.code).join('、') : error.message, true);
   } finally {
     button.disabled = false;
   }
+  return ok;
 });

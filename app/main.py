@@ -17,6 +17,7 @@ from app.modules.m5_impact import handler as m5_handler
 from app.modules.m6_batches import handler as m6_handler
 from app.modules.m6_batches import service as batch_service
 from app.modules.m7_migration import handler as m7_handler
+from app.modules.m8_recovery import handler as m8_handler
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
@@ -25,6 +26,9 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 async def lifespan(_: FastAPI):
     store.init_db()
     batch_service.ensure_seeded()
+    from app.modules.m8_recovery import service as recovery_service
+
+    recovery_service.ensure_points_for_history()
     yield
 
 
@@ -33,7 +37,7 @@ app = FastAPI(title=config.APP_TITLE, docs_url="/docs", redoc_url=None,
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 for module_handler in (m1_handler, m2_handler, m3_handler, m4_handler,
-                       m5_handler, m6_handler, m7_handler):
+                       m5_handler, m6_handler, m7_handler, m8_handler):
     app.include_router(module_handler.router)
 
 errors.install(app)

@@ -1,8 +1,8 @@
 # 深度登记 fieldmap
 
-- 规模：中型（7 个功能模块，76 个文件，65 条测试）
-- 核心规则：字段身份只认 `field_id`；类型兼容按 Decimal 值域 / 刻度 / 精确整数三件套判定；影响面 = 引用身份解析后的反向闭包
-- 使用者与工作流：湖仓数据管理员拿到上游新版元数据后，判定 60 个下游视图/任务是否还能跑，并出一份带条款号的迁移单
+- 规模：中型（8 个功能模块，89 个文件，105 条测试）
+- 核心规则：字段身份只认 `field_id`；类型兼容按 Decimal 值域 / 刻度 / 精确整数三件套判定；影响面 = 引用身份解析后的反向闭包；恢复边界 = 发布级冻结恢复点上的最后完整版
+- 使用者与工作流：湖仓数据管理员拿到上游新版元数据后，判定 60 个下游视图/任务是否还能跑，并出一份带条款号的迁移单；切换失败时在恢复页冻结恢复点、按消费方定边界并发起可中断恢复的回滚
 
 ## 功能模块
 
@@ -15,6 +15,7 @@
 | M5 影响面 | 看受影响的下游节点、环、断链、单边登记 | GET /api/impact | `app/modules/m5_impact/handler.py` `app/modules/m5_impact/service.py` `app/modules/m5_impact/closure.py` `app/modules/m5_impact/cycle.py` `app/modules/m5_impact/broken.py` | `tests/test_m5_impact.py` |
 | M6 版本批次 | 跑批次、看历史、验陈旧拒绝与区间重叠 | POST /api/runs | `app/modules/m6_batches/handler.py` `app/modules/m6_batches/service.py` `app/modules/m6_batches/window.py` `app/modules/m6_batches/guard.py` `app/modules/m6_batches/history.py` | `tests/test_m6_batches.py` |
 | M7 迁移单 | 出带条款号的迁移单与三份账目 CSV | GET /api/export/spec.md | `app/modules/m7_migration/handler.py` `app/modules/m7_migration/service.py` `app/modules/m7_migration/spec_md.py` `app/modules/m7_migration/csv_out.py` `app/modules/m7_migration/ledger.py` | `tests/test_m7_migration.py` |
+| M8 恢复边界 | 登记/冻结恢复点、定恢复边界、回滚单与中断恢复 | POST /api/recovery/rollbacks、`/recovery` | `app/modules/m8_recovery/handler.py` `app/modules/m8_recovery/service.py` `app/modules/m8_recovery/boundary.py` `app/modules/m8_recovery/freeze.py` `app/modules/m8_recovery/report.py` | `tests/test_m8_recovery.py` |
 
 ## 陷阱登记
 
@@ -30,6 +31,10 @@
 | TRAP-22 | 同一字段被连续改过两次名 | 只认最近一跳，最早的名字解析不到 | 跨版本改名链一路解析到底 | `app/modules/m4_mapping/rename.py` | `tests/test_m4_mapping.py::test_trap22_alias_chain_resolves_multi_hop` |
 | TRAP-25 | 两个版本生效区间重叠 | 取到哪版看运气 | 半开区间比较，重叠直接标记警告 | `app/modules/m6_batches/window.py` | `tests/test_m6_batches.py::test_trap25_overlap_flagged_but_adjacent_clean` |
 | TRAP-26 | 基于旧版本号提交 | 后提交无条件覆盖新结果 | 版本号乐观锁，基线落后即 409 | `app/modules/m6_batches/guard.py` | `tests/test_m6_batches.py::test_trap26_stale_submission_rejected` |
+| TRAP-27 | 迁移与回滚并发到达，共用一个回滚点 | 晚开始的下游回到不含自己的旧数据，或共享报表混用两个结构 | 恢复点挂发布；消费方取最后完整版，找不到即阻断；共享报表校验同次发布 | `app/modules/m8_recovery/boundary.py` | `tests/test_m8_recovery.py::test_late_consumer_not_sent_to_release_without_itself` |
+| TRAP-28 | 恢复依据还没冻结就放行回滚 | 结构指纹漂移，回滚到一个会变的边界 | 冻结闸门，未冻结/缺恢复点一律 409，事件留痕不执行 | `app/modules/m8_recovery/freeze.py` | `tests/test_m8_recovery.py::test_freeze_gate_blocks_unfrozen_rollback` |
+| TRAP-29 | 回滚中断后重跑 | 已切换的步骤被重复执行，或中断记录丢失 | 事件只追加，断点续跑跳过已存在步骤，记录只增不丢 | `app/modules/m8_recovery/service.py` | `tests/test_m8_recovery.py::test_interrupt_resume_skips_done_steps_and_keeps_records` |
+| TRAP-30 | 同一迁移反复重试 | 每次重试新建恢复点、回滚单越积越多 | 迁移 ID + 目标序号派生幂等键，重试沿用原恢复点与原单 | `app/modules/m8_recovery/boundary.py` | `tests/test_m8_recovery.py::test_retry_same_migration_keeps_order_and_adds_no_point` |
 
 ## 对账规则
 

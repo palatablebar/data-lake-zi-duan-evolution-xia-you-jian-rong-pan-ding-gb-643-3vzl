@@ -48,6 +48,13 @@ class Conflict(FieldmapError):
     label = "记录冲突"
 
 
+class RecoveryBlocked(FieldmapError):
+    """恢复依据不满足（未冻结 / 无完整恢复点 / 共享结构混用），回滚不得放行。"""
+    status = 409
+    code = "RECOVERY_BLOCKED"
+    label = "回滚被阻断"
+
+
 def install(app: FastAPI) -> None:
     @app.exception_handler(FieldmapError)
     async def _handle_domain(_: Request, exc: FieldmapError) -> JSONResponse:

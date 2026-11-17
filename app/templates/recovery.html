@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% block title %}恢复与回滚 · fieldmap{% endblock %}
+{% block body %}
+<section class="doc-section">
+  <h1>恢复与回滚</h1>
+  <p class="lede">恢复点 <span class="mono">{{ points|length }}</span>　最近冻结序号
+    <span class="mono">{{ latest_frozen_seq if latest_frozen_seq is not none else '—' }}</span></p>
+  <div class="actions">
+    <button type="button" data-action="register-points">登记恢复点</button>
+    <button type="button" class="ghost" data-action="freeze-latest">冻结最新点</button>
+    <span class="flash" data-flash></span>
+  </div>
+
+  {% if points %}
+  <div class="wrap-scroll">
+    <table>
+      <caption>发布级恢复点<sup class="fn">1</sup></caption>
+      <thead>
+        <tr>
+          <th>恢复点</th><th class="num">发布序号</th><th>批次</th>
+          <th>结构指纹</th><th>冻结</th><th class="num">消费方</th><th>冻结时间</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for point in points %}
+        <tr>
+          <td class="name">{{ point.point_id }}</td>
+          <td class="num">{{ point.release_seq }}</td>
+          <td class="name">{{ point.run_id }}</td>
+          <td class="name truncate">{{ point.fingerprint[:16] }}…</td>
+          <td>
+            {% if point.frozen %}
+            <span class="st st-ok">已冻结</span>
+            {% else %}
+            <span class="st st-warn">未冻结</span>
+            {% endif %}
+          </td>
+          <td class="num">{{ point.consumer_count }}</td>
+          <td class="name">{{ point.frozen_at|day if point.frozen_at else '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty">还没有恢复点，先点「登记恢复点」。</p>
+  {% endif %}
+</section>
+
+<section class="doc-section">
+  <h2><span class="clause">2</span>回滚单</h2>
+  <div class="pair">
+    <label>迁移 ID
+      <input type="text" id="rb-migration" value="wave-2026-09">
+    </label>
+    <label>目标发布序号
+      <input type="text" id="rb-seq" value="1">
+    </label>
+    <label>消费方（逗号分隔）
+      <input type="text" id="rb-consumers" value="dw.mv_order_daily,dw.task_settle">
+    </label>
+    <label>共享报表（逗号分隔）
+      <input type="text" id="rb-reports" value="ads.rpt_pay_channel">
+    </label>
+  </div>
+  <div class="actions">
+    <button type="button" data-action="request-rollback">请求回滚</button>
+    <button type="button" class="ghost" data-action="retry-rollback">同迁移重试</button>
+    <button type="button" class="ghost" data-action="interrupt-rollback">中断首张单</button>
+    <button type="button" class="ghost" data-action="resume-rollback">中断后恢复</button>
+  </div>
+
+  {% if orders %}
+  {% for order in orders %}
+  <article class="spec-clause">
+    <h3><span class="mono">{{ order.order_id }}</span>
+      {% if order.status == 'done' %}<span class="st st-ok">已完成</span>
+      {% elif order.status == 'blocked' %}<span class="st st-bad">已阻断</span>
+      {% elif order.status == 'interrupted' %}<span class="st st-warn">已中断</span>
+      {% else %}<span class="st st-info">{{ order.status }}</span>{% endif %}
+    </h3>
+    <p class="meta">恢复点 <span class="mono">{{ order.point_id or '—' }}</span>
+      发布序号 <span class="mono">{{ order.release_seq }}</span>
+      尝试 <span class="mono">{{ order.attempts }}</span></p>
+    <p class="meta">指纹 <span class="mono">{{ (order.fingerprint or '—')[:20] }}…</span></p>
+
+    {% if order.boundaries %}
+    <table>
+      <thead><tr><th>消费方</th><th class="num">恢复序号</th><th>阻断原因</th></tr></thead>
+      <tbody>
+        {% for item in order.boundaries %}
+        <tr>
+          <td class="name">{{ item.consumer }}</td>
+          <td class="num">{{ item.point_release_seq if item.found else '—' }}</td>
+          <td class="reason">
+            {% if item.reason %}<span class="code">{{ item.reason }}</span>（{{ item.reason|reason }}）{% else %}—{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+
+    {% if order.blockers %}
+    <table>
+      <thead><tr><th>阻断原因</th><th>说明</th></tr></thead>
+      <tbody>
+        {% for blocker in order.blockers %}
+        <tr>
+          <td class="reason"><span class="code">{{ blocker.code }}</span>（{{ blocker.code|reason }}）</td>
+          <td>{{ blocker.detail }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+
+    <table>
+      <caption>事件流</caption>
+      <thead><tr><th class="num">#</th><th>事件</th><th>原因</th><th>时间</th></tr></thead>
+      <tbody>
+        {% for event in order.events %}
+        <tr>
+          <td class="num">{{ event.seq }}</td>
+          <td class="name">{{ event.event }}</td>
+          <td class="reason">{% if event.reason %}<span class="code">{{ event.reason }}</span>{% else %}—{% endif %}</td>
+          <td class="name">{{ event.at|day }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <div class="actions">
+      <a class="btn ghost" href="/api/export/recovery/{{ order.order_id }}.md">恢复单 MD</a>
+      <a class="btn ghost" href="/api/export/recovery/{{ order.order_id }}/blockers.csv">阻断 CSV</a>
+      <a class="btn ghost" href="/api/export/recovery/{{ order.order_id }}/events.csv">事件 CSV</a>
+    </div>
+  </article>
+  {% endfor %}
+  {% else %}
+  <p class="empty">还没有回滚单。</p>
+  {% endif %}
+</section>
+
+<aside class="notes">
+  <ol class="footnotes">
+    <li>恢复点挂在发布上而非消费方；共享报表只认发布级恢复点，引用不跨发布。<a class="back" href="#main">↩</a></li>
+    <li>恢复依据未冻结不得放行回滚；同一迁移重试沿用原恢复点，不新增恢复点。<a class="back" href="#main">↩</a></li>
+  </ol>
+</aside>
+{% endblock %}
